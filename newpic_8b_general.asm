@@ -27,6 +27,7 @@ PART_LOW_Y  EQU 0x09
 PART_HIGH_Y EQU 0x0A
 AD_VALUE    EQU 0x0B ;Valor convertido del ADC
 T_WAIT	    EQU 0x0C
+OFFSET	    EQU 0x0D
     
 TAULA7S	    EQU 0x20
 TAULA_SERVO_X EQU 0x30
@@ -143,10 +144,14 @@ ESPERA_REBOTE		;Rutina espera rebots
    
 ;------------------- MODOS DE JUEGO -----------------------------
 PLAY_MANUAL
+    ;El manual empieza en la F
+    MOVLW 0x03
+    MOVWF OFFSET,0
+    CLRF LATD,0
     BCF LATC,2,0 ;Y
     BCF LATC,1,0 ;R
     BSF LATC,0,0 ;G
-    GOTO WAIT_RX
+    GOTO WAIT_CHANGE_MANUAL
     
 PLAY_AUTO
     ;Configuramos los LEDs
@@ -174,28 +179,36 @@ WAIT_CHANGE_MODE
 	GOTO WAIT_CHANGE_MANUAL
 
 WAIT_CHANGE_MANUAL
+    ;Primero comprobamos si estamos en modo Manual con JS
+    BTFSS PORTC,0,0
+    GOTO WAIT_PLAY_REC
+    BTFSC PORTA,3,0
+    GOTO WAIT_PLAY_REC
+    ;Comprobamos que se haya pulsado el boton
     BTFSC PORTB,1,0
-    GOTO WAIT_BOTON_AUX
+    GOTO WAIT_PLAY_REC
+    ;Comprobamos rebotes
     CALL ESPERA_16ms
     BTFSC PORTB,1,0
-    GOTO WAIT_BOTON_AUX
+    GOTO WAIT_PLAY_REC
     WAIT_SOLTAR_MANUAL
 	BTFSS PORTB,1,0
 	GOTO WAIT_SOLTAR_MANUAL
-	;Comprobar que estemos en modo manual
-	BTFSC PORTC,0,0
 	BTG LATA,3,0 ;Invertir valor del LED de Modo Manual
-	GOTO WAIT_BOTON_AUX
+	GOTO WAIT_PLAY_REC
 
-WAIT_BOTON_AUX
+WAIT_PLAY_REC
+    ;Primero comprobamos si estamos en modo Manual
+    BTFSS PORTC,0,0
+    GOTO WAIT_RX
     BTFSC PORTB,2,0
     GOTO WAIT_RX
     CALL ESPERA_16ms
     BTFSC PORTB,2,0
     GOTO WAIT_RX
-    WAIT_SOLTAR_AUX
+    WAIT_SOLTAR_PLAY
 	BTFSS PORTB,2,0
-	GOTO WAIT_SOLTAR_AUX
+	GOTO WAIT_SOLTAR_PLAY
 	BTG LATA,3,0 ;Invertir valor del LED de Modo Manual
 	GOTO WAIT_RX
 	
@@ -212,7 +225,12 @@ SET_ADCON_Y
     RETURN
     
 WAIT_CONV
+    GOTO WAIT_CHANGE_MODE
+    ;Comprobar que estamos en manual antes de seguir
+    BTFSS PORTC,0,0
+    GOTO WAIT_CHANGE_MODE ;Auto, salimos
     CALL SET_ADCON_X
+    ;Activamos GO/DONE
     BSF ADCON0,1,0
     WAIT_DONE
 	BTFSC ADCON0,1,0
@@ -221,12 +239,11 @@ WAIT_CONV
     GOTO WAIT_CHANGE_MODE
     
 READ_XY
-    BSF LATA,3,0
-    MOVFF ADRESH, LATD
-    RETURN
+    MOVFF ADRESH, LATD ;DEBUG DE LAS X
     ;Comprobar Joystick X
     MOVFF ADRESH, AD_VALUE
-    CALL CHECK_RIGHT 
+    CALL CHECK_RIGHT
+    RETURN
     ;Comprobar Joystick Y -> Hay que crear la tabla flash de valores
     CALL SET_ADCON_Y
     WAIT_ADCON_Y
@@ -237,50 +254,44 @@ READ_XY
     RETURN
     
 CHECK_LEFT
-    MOVLW .0 ;TODO -> Poner valor inferior a 1.5V aprox
-    CPFSGT AD_VALUE,0
+    MOVLW .50 
+    CPFSLT AD_VALUE,0
     GOTO WAIT_CHANGE_MODE ;Si el valor no es superior 
-    WAIT_SOLTAR_L_JS ;Esperar a que el JS vuelva a la posicion inicial
-        CPFSLT AD_VALUE,0
-	GOTO MOVE_LEFT
-	GOTO WAIT_SOLTAR_L_JS
+    ;BSF LATA,3,0
     ;Una vez ha vuelto, tocar la tecla correspondiente
     MOVE_LEFT
 	;Comprobar que no esté ya en la ultima tecla por la izquierda
-	MOVLW 0x30
-	CPFSGT TBLPTRL,0
+	MOVLW 0x01
+	CPFSLT OFFSET,0
 	GOTO WAIT_CHANGE_MODE ; Si esta en la posicion de la izq del todo, no hacer nada y volver al polling
 	MOVLW 0x01
-	SUBWF TBLPTRL,1,0 ;Sino, reducimos una posicion del puntero
-	MOVF TBLPTRL,0,0
-	;Comprobar que estamos en manual antes de pulsar la tecla
-	BTFSS PORTC,2,0
-	GOTO PLAY_TECLA ;Manual, pulsamos
-	GOTO WAIT_RX ;Auto, volvemos a polling
+	SUBWF OFFSET,1,0 ;Sino, reducimos una posicion del offset
+	GOTO UPDATE_POINTER
 	
 CHECK_RIGHT
-    MOVLW .0 ;TODO -> Poner valor superior a 3V y comparar con el leído en el JS_X
+    MOVLW .200 
     CPFSGT AD_VALUE,0
-    GOTO CHECK_LEFT
-    WAIT_SOLTAR_R_JS ;Esperar a que el JS vuelva a la posicion inicial
-        CPFSGT AD_VALUE,0
-	GOTO MOVE_RIGHT
-	GOTO WAIT_SOLTAR_R_JS
+    ;GOTO CHECK_LEFT
+    GOTO WAIT_CHANGE_MODE
+    ;TODO -> Esperar a que el JS vuelva a la posicion inicial
     ;Una vez ha vuelto, tocar la tecla correspondiente
     MOVE_RIGHT
-	;Comprobar que no esté ya en la ultima tecla por la derecha
-	MOVLW 0x37
-	CPFSLT TBLPTRL,0
+	;Comprobar que no esté ya en la ultima tecla por la izquierda
+	MOVLW 0x06
+	CPFSGT OFFSET,0
 	GOTO WAIT_CHANGE_MODE ; Si esta en la posicion de la derecha del todo, no hacer nada y volver al polling
 	MOVLW 0x01
-	ADDWF TBLPTRL,1,0 ;Sino, avanzamos una posicion del puntero
-	MOVF TBLPTRL,0,0
-	;Comprobar que estamos en manual antes de pulsar la tecla
-	BTFSS PORTC,2,0
-	GOTO PLAY_TECLA ;Manual, pulsamos
-	GOTO WAIT_RX ;Auto, volvemos a polling
-        
-    
+	ADDWF OFFSET,1,0 ;Sino, aumentamos una posicion del offset
+	GOTO UPDATE_POINTER
+	
+UPDATE_POINTER
+    ;Ponemos en W la direccion inicial de la tabla + el offset
+    MOVLW 0x20
+    ADDWF OFFSET,0,0 
+    CALL MOVE_X ;Movemos la tecla
+    GOTO WAIT_CHANGE_MODE ;Volvemos al polling
+
+
 ;------------------- INICIALIZACION ------------------------------
 INIT_PORTS
    BCF INTCON2,RBPU,0 ;Pull-ups del puerto B activos
@@ -325,41 +336,50 @@ INIT_PORTS
    MOVWF ADCON0,0
    ;-- ADCON1 --
    MOVLW b'00001101'
+   MOVWF ADCON1,0
    ;-- ADCON2 --
-   MOVLW b'00001001'
-   
+   MOVLW b'00010001'
+   MOVWF ADCON2,0
    RETURN
    
 ;------------------- REPRODUCCION CANCION -------------------------
 WAIT_TIME
-    CLRF DONE_COUNT
-    CLRF COUNT_TIME
+    CLRF DONE_COUNT,0
+    CLRF COUNT_TIME,0
     KEEP_WAITING
 	MOVLW 0xFF
 	CPFSEQ DONE_COUNT
 	GOTO KEEP_WAITING
-	RETURN
-	
+	RETURN	
 WAIT_RX
     BTFSS PIR1,RCIF,0
     GOTO WAIT_CONV
     MOVFF RCREG,TECLA
     GOTO CHECK_P
-CHECK_MODE
-    BTFSS PORTC,2,0
-    GOTO CHECK_C
-    GOTO WAIT_CONV
 CHECK_P
     MOVLW 'P'
     CPFSEQ TECLA,0
     GOTO CHECK_MODE
-    CALL SEND_ACK
+    CALL SEND_ACK ;Si esta en auto, devuelve ACK y reproduce la cancion
     CALL PLAY_AUTO
     GOTO PLAY_SONG
+CHECK_MODE
+    BTFSC PORTC,2,0
+    GOTO WAIT_CONV ;Si esta en auto, vuelve al polling
+    BTFSS PORTA,3,0
+    GOTO WAIT_CONV ; Si esta en manual JS, vuelve a polling
+    GOTO CHECK_C ;Si esta en manual Java, toca la tecla
     
 ;Lee la tecla correspondiente de la tabla y la muestra por el 7seg
 PLAY_TECLA
-    ;Mostrar tecla por 7 segments
+    CALL MOVE_X
+    CALL MOVE_Y
+    BTFSS PORTC,2,0
+    GOTO WAIT_RX
+    GOTO PLAY_SONG
+    
+MOVE_X
+   ;Mostrar tecla por 7 segments
     MOVWF TBLPTRL,0
     TBLRD*
     MOVFF TABLAT,LATD
@@ -368,7 +388,9 @@ PLAY_TECLA
     ADDWF TBLPTRL,1,0
     TBLRD*
     ;Mover X
-    MOVFF TABLAT,POS_SERVO_X
+    MOVFF TABLAT,POS_SERVO_X 
+    RETURN
+MOVE_Y
     MOVLW .10
     MOVWF T_WAIT,0
     CALL WAIT_TIME
@@ -381,10 +403,7 @@ PLAY_TECLA
     ;Mover Y arriba
     MOVLW .230
     MOVWF POS_SERVO_Y,0
-    BTFSS PORTC,2,0
-    GOTO WAIT_RX
-    GOTO PLAY_SONG
-
+    RETURN
 CHECK_C
     MOVLW 'C'
     CPFSEQ TECLA,0
