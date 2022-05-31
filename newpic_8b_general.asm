@@ -32,7 +32,7 @@ COUNT_1s    EQU 0x0E
     
 TAULA7S	    EQU 0x20
 TAULA_SERVO_X EQU 0x30
-TAULA_SERVO_Y EQU .254
+TAULA_SERVO_Y EQU 0x80
 
  
     ORG TAULA7S
@@ -53,22 +53,17 @@ TAULA_SERVO_Y EQU .254
     ;Pos de G, Pos de A
     DB .230, .234
     ;Pos de B, Pos de c
-    DB .238, .242
+    DB .238, .2424
     
+    TAULA_SERVO_Y EQU 0x80
     ORG TAULA_SERVO_Y
     DB .230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230
-    DB .230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230,.230
-    DB .229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229
     DB .229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.229
     DB .229,.229,.229,.229,.229,.229,.229,.229,.229,.229,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228
     DB .228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228
-    DB .228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228,.228
-    DB .227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227
     DB .227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.227
     DB .227,.227,.227,.227,.227,.227,.227,.227,.227,.227,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226
-    DB .226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226
-    DB .226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226
-    DB .226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226,.226
+    DB .226,.226,.226,.226,.226,.226,.226,.226
         
 ;------------------- MOVIMIENTO SERVO ---------------------------
     
@@ -187,11 +182,8 @@ PLAY_RECORD
 ;------------------- POLLING BOTONES -----------------------------  
     
 WAIT_CHANGE_MODE
-    ;Comprobamos que no esté grabando
-    BTFSC PORTC,1,0
-    GOTO WAIT_CHANGE_MANUAL
     BTFSC PORTB,0,0
-    ;GOTO WAIT_CHANGE_MANUAL
+    GOTO WAIT_CHANGE_MANUAL
     CALL ESPERA_16ms
     BTFSC PORTB,0,0
     GOTO WAIT_CHANGE_MANUAL
@@ -201,6 +193,9 @@ WAIT_CHANGE_MODE
 	CALL ESPERA_16ms
 	BTFSS PORTB,0,0
 	GOTO WAIT_SOLTAR_MODE
+	;Comprobamos que no esté grabando
+	BTFSC PORTC,1,0
+	GOTO WAIT_CHANGE_MANUAL
 	BTFSS PORTC,0,0 ;Comprobar en que modo estaba antes, y cambiar al nuevo
 	GOTO PLAY_MANUAL ;Si estaba en automatico, pasar a manual
 	CALL PLAY_AUTO ;Si estaba en manual, pasar a auto
@@ -209,9 +204,6 @@ WAIT_CHANGE_MODE
 WAIT_CHANGE_MANUAL
     ;Primero comprobamos si estamos en modo Manual
     BTFSS PORTC,0,0
-    GOTO WAIT_PLAY_REC
-    ;Comprobamos que no esté grabando
-    BTFSC PORTC,1,0
     GOTO WAIT_PLAY_REC
     ;Comprobamos que se haya pulsado el boton
     BTFSC PORTB,1,0
@@ -223,6 +215,9 @@ WAIT_CHANGE_MANUAL
     WAIT_SOLTAR_MANUAL
 	BTFSS PORTB,1,0
 	GOTO WAIT_SOLTAR_MANUAL
+	;Comprobamos que no esté grabando
+	BTFSC PORTC,1,0
+	GOTO WAIT_PLAY_REC
 	BTG LATA,3,0 ;Invertir valor del LED de Modo Manual
 	BTFSS LATA,3,0
 	CALL INIT_JS
@@ -266,22 +261,23 @@ WAIT_CONV
     CALL SET_ADCON_X
     CALL LISTEN_ADC
     ;Comprobar Joystick X
+    GOTO CHECK_Y
     GOTO CHECK_RIGHT
 
 CHECK_Y
     CALL SET_ADCON_Y
     CALL LISTEN_ADC
-    BSF LATA,4,0
+    BTG LATA,4,0
     MOVFF AD_VALUE, TBLPTRL
     TBLRD*
     MOVFF TABLAT,POS_SERVO_Y
-    CALL WAIT_RETURN_Y
+    ;CALL WAIT_RETURN_Y
     GOTO WAIT_CHANGE_MODE
     
 CHECK_LEFT
     MOVLW .50 
     CPFSLT AD_VALUE,0
-    GOTO WAIT_CHANGE_MODE ;Si el valor no es superior 
+    GOTO CHECK_Y ;Si el valor no es superior 
     ;Esperar a que el JS vuelva a la posicion inicial
     CALL WAIT_RETURN_LEFT
     ;Una vez ha vuelto, tocar la tecla correspondiente
@@ -289,7 +285,7 @@ CHECK_LEFT
 	;Comprobar que no esté ya en la ultima tecla por la izquierda
 	MOVLW 0x00
 	CPFSGT OFFSET,0
-	GOTO WAIT_CHANGE_MODE ; Si esta en la posicion de la izq del todo, no hacer nada y volver al polling
+	GOTO CHECK_Y ; Si esta en la posicion de la izq del todo, no hacer nada y volver al polling
 	MOVLW 0x01
 	SUBWF OFFSET,1,0 ;Sino, reducimos una posicion del offset
 	CALL UPDATE_POINTER
@@ -306,7 +302,7 @@ CHECK_RIGHT
 	;Comprobar que no esté ya en la ultima tecla por la izquierda
 	MOVLW 0x07
 	CPFSLT OFFSET,0
-	GOTO WAIT_CHANGE_MODE ; Si esta en la posicion de la derecha del todo, no hacer nada y volver al polling
+	GOTO CHECK_Y ; Si esta en la posicion de la derecha del todo, no hacer nada y volver al polling
 	MOVLW 0x01
 	ADDWF OFFSET,1,0 ;Sino, aumentamos una posicion del offset
 	CALL UPDATE_POINTER
@@ -366,30 +362,37 @@ SAVE_RAM
     MOVFF POS_SERVO_X, POSTINC0
     RETURN
     
-CHECK_1s
-    BTFSC PORTB,0,0
-    CLRF COUNT_1s,0
-    MOVLW 0x01
-    ADDWF COUNT_1s,1,0
-    MOVLW .50
-    CPFSGT COUNT_1s,0
-    RETURN
-    ;Si está grabando, pausamos la grabación
-    BTFSS PORTC,1,0
-    CALL START_REC
-    BTFSC PORTC,1,0
-    RETURN
-    BCF LATC,1,0
-    BSF LATC,0,0
-    RETURN
-START_REC
-    ;Comprobamos que esté en modo manual
-    BTFSS PORTC,0,0
-    RETURN
-    BSF LATC,1,0
-    BCF LATC,0,0
-    BCF LATC,2,0
-    RETURN
+    CHECK_1s
+	;Comprobar que esta el boton pulsado
+	BTFSC PORTB,1,0
+	CLRF COUNT_1s
+	MOVLW 0x01
+	ADDWF COUNT_1s,1,0
+	MOVLW .50
+	CPFSGT COUNT_1s,0
+	RETURN
+	;Comprobar que no esté en auto
+	BTFSC PORTC,2,0
+	RETURN
+	BTFSS PORTC,1,0
+	GOTO RED
+	GOTO GREEN
+RED
+	BCF LATC,0,0
+	BSF LATC,1,0
+	CLRF COUNT_1s
+	WAIT_SOLTAR_R
+	    BTFSC PORTB,1,0
+	    RETURN
+	    GOTO WAIT_SOLTAR_R
+GREEN
+	BCF LATC,1,0
+	BSF LATC,0,0
+	CLRF COUNT_1s
+	WAIT_SOLTAR_G
+	    BTFSC PORTB,1,0
+	    RETURN
+	    GOTO WAIT_SOLTAR_G
 
 ;------------------- INICIALIZACION ------------------------------
 INIT_JS
