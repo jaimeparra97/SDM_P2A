@@ -250,7 +250,7 @@ SET_ADCON_Y
     MOVWF ADCON0,0
     RETURN
     
-WAIT_CONV 
+WAIT_CONV_X
     ;Comprobar que estamos en manual antes de seguir
     BTFSS PORTC,0,0
     GOTO WAIT_CHANGE_MODE ;Auto, salimos
@@ -261,23 +261,27 @@ WAIT_CONV
     CALL SET_ADCON_X
     CALL LISTEN_ADC
     ;Comprobar Joystick X
-    GOTO CHECK_Y
     GOTO CHECK_RIGHT
 
-CHECK_Y
+WAIT_CONV_Y
+    ;Comprobar que estamos en manual antes de seguir
+    BTFSS PORTC,0,0
+    GOTO WAIT_CHANGE_MODE ;Auto, salimos
+    ;Comprobar manual JS
+    BTFSC PORTA,3,0
+    GOTO WAIT_CHANGE_MODE ;Java, salimos
     CALL SET_ADCON_Y
     CALL LISTEN_ADC
     BTG LATA,4,0
     MOVFF AD_VALUE, TBLPTRL
     TBLRD*
     MOVFF TABLAT,POS_SERVO_Y
-    ;CALL WAIT_RETURN_Y
     GOTO WAIT_CHANGE_MODE
     
 CHECK_LEFT
     MOVLW .50 
     CPFSLT AD_VALUE,0
-    GOTO CHECK_Y ;Si el valor no es superior 
+    GOTO WAIT_CONV_Y ;Si el valor no es superior 
     ;Esperar a que el JS vuelva a la posicion inicial
     CALL WAIT_RETURN_LEFT
     ;Una vez ha vuelto, tocar la tecla correspondiente
@@ -285,11 +289,11 @@ CHECK_LEFT
 	;Comprobar que no esté ya en la ultima tecla por la izquierda
 	MOVLW 0x00
 	CPFSGT OFFSET,0
-	GOTO CHECK_Y ; Si esta en la posicion de la izq del todo, no hacer nada y volver al polling
+	GOTO WAIT_CONV_Y ; Si esta en la posicion de la izq del todo, no hacer nada y volver al polling
 	MOVLW 0x01
 	SUBWF OFFSET,1,0 ;Sino, reducimos una posicion del offset
 	CALL UPDATE_POINTER
-    GOTO CHECK_Y
+    GOTO WAIT_CONV_Y
 	
 CHECK_RIGHT
     MOVLW .200 
@@ -302,7 +306,7 @@ CHECK_RIGHT
 	;Comprobar que no esté ya en la ultima tecla por la izquierda
 	MOVLW 0x07
 	CPFSLT OFFSET,0
-	GOTO CHECK_Y ; Si esta en la posicion de la derecha del todo, no hacer nada y volver al polling
+	GOTO WAIT_CONV_Y ; Si esta en la posicion de la derecha del todo, no hacer nada y volver al polling
 	MOVLW 0x01
 	ADDWF OFFSET,1,0 ;Sino, aumentamos una posicion del offset
 	CALL UPDATE_POINTER
@@ -469,7 +473,7 @@ WAIT_TIME
 	RETURN	
 WAIT_RX
     BTFSS PIR1,RCIF,0
-    GOTO WAIT_CONV
+    GOTO WAIT_CONV_X
     MOVFF RCREG,TECLA
     GOTO CHECK_P
 CHECK_P
@@ -481,9 +485,9 @@ CHECK_P
     GOTO PLAY_SONG
 CHECK_MODE
     BTFSC PORTC,2,0
-    GOTO WAIT_CONV ;Si esta en auto, vuelve al polling
+    GOTO WAIT_CONV_X ;Si esta en auto, vuelve al polling
     BTFSS PORTA,3,0
-    GOTO WAIT_CONV ; Si esta en manual JS, vuelve a polling
+    GOTO WAIT_CONV_X ; Si esta en manual JS, vuelve a polling
     GOTO CHECK_C ;Si esta en manual Java, toca la tecla
     
 ;Lee la tecla correspondiente de la tabla y la muestra por el 7seg
